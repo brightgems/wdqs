@@ -20,8 +20,8 @@
 ```
 1) 打开URL: https://passport.jimubox.com/authentication/login?redirectUrl=https://www.jimu.com/User/AssetOverview
 site:B662B0F090BE31C1DCB6A13D70E81429
-username:brightg
-password:111111
+username:**
+password:**
 agreeContract:on
 2) 输入用户名/登陆密码
 3) 点击登陆按钮
