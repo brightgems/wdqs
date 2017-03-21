@@ -35,10 +35,7 @@ LOGGING = {
         }
     },
     'loggers': {
-        '': {
-            'handlers': ['console'],
-            'level': 'INFO',
-        },
+
         'wdqs': {
             'handlers': ['file','console'],
             'level': 'INFO',

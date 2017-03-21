@@ -5,8 +5,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>1236649b-a41b-4617-9190-1380f7fd32c9</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>
-    </StartupFile>
+    <StartupFile>main.py</StartupFile>
     <SearchPath>E:\git\wdqs\wdqs.pyproj</SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
     <OutputPath>.</OutputPath>
@@ -16,7 +15,7 @@
     <InterpreterVersion>2.7</InterpreterVersion>
     <IsWindowsApplication>False</IsWindowsApplication>
     <LaunchProvider>Standard Python launcher</LaunchProvider>
-    <CommandLineArguments>-b</CommandLineArguments>
+    <CommandLineArguments>-d</CommandLineArguments>
     <EnableNativeCodeDebugging>False</EnableNativeCodeDebugging>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
@@ -33,6 +32,9 @@
     </Compile>
     <Compile Include="main.py" />
     <Compile Include="store.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests.py">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="utils.py" />

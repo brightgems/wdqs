@@ -16,6 +16,8 @@ sys.path.insert(0,path.dirname(path.dirname(path.abspath(__file__))))
 import utils
 import config
 import time
+import datetime
+from store import save_default_record, del_default_record
 logging.config.dictConfig(config.LOGGING)
 logger = logging.getLogger('wdqs')
 
@@ -210,16 +212,65 @@ def bid_credit_assign():
                 bid_credit_post(session,each,acct_bal)
             time.sleep(3)
 #endregion
+def fetch_default_records(session,dtext):
+    """
+        get prj list with status
+    """
+    page = 1
+    ls_dr = []
+    
+    while True:
+        url = "https://box.jimu.com/RepaymentPlan/List?page=%d&selectedReplaymentPlanType=0&selectedReplaymentPlanStatus=1&month=%s&date=" % (page,dtext)
+        rsp = session.get(url)
+        page +=1
+        if rsp.status_code == 200:
+            # parse
+            q = pq(rsp.text)
+            trs = q('table.table.payback-table tbody tr')
+            if not trs:
+                break
+            for tr in trs[:-1]:
+                dtxt = pq(tr)('td')[0].text
+                amount = pq(tr)('td')[2].text
+                type = pq(tr)('td')[4].text
+                prj_name = pq(tr)('td')[5].text
+                prj_id = pq(tr)('td:nth-child(6) a').attr.href
+                d_ = datetime.datetime.strptime(dtxt,"%Y-%m-%d")
+                
+                if d_<datetime.datetime.today() and prj_id:
+                    prj_id = prj_id.split('/')[-1]
+                    ls_dr.append({'date':d_,
+                                  'amount':amount,
+                                  'type':type,
+                                  'prj_id':prj_id,
+                                  'prj_name':prj_name})
+        else:
+            break
+    return ls_dr
+
+def collect_default_records():
+    user = config.user
+    psw = config.password
+    d_ = datetime.date.today()
+    d_ = datetime.date(d_.year,d_.month,1)
+    dtext = d_.strftime("%Y-%m-%d")
+    with requests.Session() as session:
+        login_jimu(session,user,psw)
+        lsdr = fetch_default_records(session,dtext)
+    del_default_record(d_)
+    save_default_record(lsdr)    
 
 def main():
     parser = argparse.ArgumentParser(description='Jimu Box Utility command')
     parser.add_argument('-b','--bid', action="store_true", help='Bid for credit assign')
-    parser.add_argument('-l','--listproject', action="store_true", help='Bid for credit assign')
-
+    parser.add_argument('-l','--listproject', action="store_true", help='list credit project')
+    parser.add_argument('-d','--default', action="store_true", help='Collect default record')
     
     args = parser.parse_args()
     if args.bid:
         bid_credit_assign()
+    if args.default:
+        collect_default_records()
     elif args.listproject:
         get_prj_list()
 
