@@ -3,3 +3,4 @@ mechanize
 PyYAML
 requests
 pytest
+sqlalchemy
