@@ -54,8 +54,7 @@ JIMU_REQUEST_HEADERS = {
     "1",
     "Origin":
     "https://box.jimu.com",
-    "Cookie":
-    '',
+    "Cookie":'tr=102b2826-5546-4d77-a5f6-1bc4910cc0c7; tr=ce7798f2-6be6-40c9-8165-4601819f163c; gr_user_id=7bc5a3a0-4737-4e09-9447-f9d6eea8dd96; _qzja=1.1636350280.1501763703516.1501763703516.1501767982886.1501768000969.1501768122182.0.0.0.5.2; __utma=237340443.178906233.1497061582.1501767983.1501856196.7; _jzqa=1.3851647976868439600.1501763703.1501767983.1501856196.3; ag_fid=ejFkst1Z4xaLMP1F; __ag_cm_=1; Hm_lvt_1dc096a18210fb74c17c2feb1eb75e9c=1522847413,1522891871; Hm_lvt_b52e68eb56d57aeecdafc769040770d4=1522847413,1522891871; gr_session_id_82dbda8cf8253e8f=5c387eb2-5923-442a-a535-ed373ee341dd; ps=64ceaa25-253d-494d-a141-ab50d76eaa1b-p; bs=9e22b4b8-f69c-4094-9c65-5d866e96d7e0-w; .TLFT=JqYGsollrxAkGC0E06w4qA%3D%3D%3APdYGxR2bfxDi7rIgDIj0%2Fhpu9OYoJ%2BXEn0F7muPL5kU%3D%3A4%2FB%2FSl3OGsNIecDQZInkkBhN%2FH638qY5Y%2FT9qjRZwieEE%2Fr8oxtboPOywK%2BJ3vt1; Hm_lpvt_1dc096a18210fb74c17c2feb1eb75e9c=1522892881; Hm_lpvt_b52e68eb56d57aeecdafc769040770d4=1522892881',
     "User-Agent":
     "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36",
     "Referer":
@@ -472,6 +471,11 @@ def parse_amt(amtstr):
     else:
         return amt
 
+def parse_dt(dtstr):
+    if len(dtstr)==10:
+        return datetime.datetime.strptime(dtstr, "%Y-%m-%d")
+    else:
+        return datetime.datetime.strptime(dtstr, "%Y-%m-%d %H:%M:%S")
 
 def fetch_prject_details(session, prjId):
     logger.info("fetch project detail: %s" % prjId)
@@ -520,16 +524,15 @@ def fetch_prject_details(session, prjId):
         employerType_elements = root.xpath(u"//*[@id='PersonalInfo']/div/div/dl/dt[text()='工作单位性质']")
         prj['employerType'] = employerType_elements[0].getnext().text if employerType_elements else ""
 
-        prj['loanAmount'] = parse_amt(root.xpath(u"//*[@id='ProjectBasicInfo']/div[4]/dl/dt[text()='本期融资金额']")[0].getnext().text)
+        prj['loanAmount'] = parse_amt(root.xpath(u"//*[@id='ProjectBasicInfo']/div/dl/dt[text()='本期融资金额']")[0].getnext().text)
 
-        prj['loanMonth'] = int(root.cssselect("#ProjectBasicInfo > div:nth-child(5) > dl > dd:nth-child(8)")[0].text)
+        prj['loanMonth'] = int(root.xpath(u"//*[@id='ProjectBasicInfo']/div/dl/dt[text()='借款期限']")[0].getnext().text.strip(u"个月"))
         prj['overdueCount'] = int(root.xpath(u"//*[@id='PersonalInfo']/div/div/dl/dt[text()='平台历史逾期次数']")[0].getnext().text[:-2])
 
         prj['historyOverdueAmount'] = parse_amt(root.xpath(u"//*[@id='PersonalInfo']/div/div/dl/dt[text()='平台历史逾期金额']")[0].getnext().text)
         prj['currentOverdueAmount'] = parse_amt(root.xpath(u"//*[@id='PersonalInfo']/div/div/dl/dt[text()='平台当前逾期金额']")[0].getnext().text)
-        loanStDt = root.cssselect("#ProjectBasicInfo > div:nth-child(6) > dl > dd:nth-child(12)")[0].text
-        prj['loanStDt'] = datetime.datetime.strptime(loanStDt,
-                                                     "%Y-%m-%d %H:%M:%S")
+        loanStDt = root.xpath(u"//*[@id='ProjectBasicInfo']/div/dl/dt[text()='计划还款日期']")[0].getnext().text
+        prj['loanStDt'] = parse_dt(loanStDt)
     return prj
 
 
@@ -572,7 +575,7 @@ def main():
         
         with requests.Session() as session:
             login_jimu(session, user, psw)
-            ls_prj = get_project_details(session, ['14392571'])
+            ls_prj = get_project_details(session, ['4139010'])
         save_project_details(ls_prj)
         print(ls_prj)
 

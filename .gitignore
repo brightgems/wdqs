@@ -5,4 +5,9 @@
 /.vs/wdqs/v14/.suo
 /config.pyc
 /utils.pyc
-/wdqs.log
+wdqs.log*
+wdqs.db
+wdqs.yaml
+*.pyc
+*.yaml
+*.json
