@@ -77,6 +77,7 @@ class ProjectDetails(Base):
     loanAmount = Column(Integer)
     loanMonth = Column(Integer) # month
     overdueCount = Column(Integer)
+    overdueDays = Column(Integer)
     currentOverdueAmount = Column(Float)
     historyOverdueAmount = Column(Float)
     loanStDt = Column(DateTime)

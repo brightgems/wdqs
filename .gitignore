@@ -6,8 +6,9 @@
 /config.pyc
 /utils.pyc
 wdqs.log*
-wdqs.db
 wdqs.yaml
 *.pyc
 *.yaml
 *.json
+*.db
+cache

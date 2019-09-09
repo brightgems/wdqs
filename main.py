@@ -11,12 +11,16 @@ from pyquery.pyquery import fromstring
 from pyquery import PyQuery as pq
 import lxml.html
 import urlparse
-
 import logging
 import logging.config
 import argparse
 import json
 from os import sys, path
+import warnings
+import pandas as pd
+
+warnings.filterwarnings('ignore')
+
 sys.path.insert(0, path.dirname(path.dirname(path.abspath(__file__))))
 
 import config
@@ -39,8 +43,8 @@ logger = logging.getLogger('wdqs')
 JIMU_BASE_URL = "https://box.jimu.com"
 
 JIMU_LOGIN_URL = "https://www.jimu.com/User/Login"
-JIMU_CHECK_BAL_URL = "https://www.jimu.com/User/AssetOverview/Asset?_=1488987431715"
-JIMU_LIST_CREDIT_ASSIGN = "https://box.jimu.com/CreditAssign/List?rate=10&days={0}&orderIndex=1"
+JIMU_ASSET_OVERVIEW_URL  = "https://www.jimu.com/User/AssetOverview"
+JIMU_LIST_CREDIT_ASSIGN = "https://box.jimu.com/CreditAssign/List?days={0}&orderIndex=1"
 JIMU_PRJ_DETAILS = "https://box.jimu.com/Project/Index/{0}"
 
 JIMU_REQUEST_HEADERS = {
@@ -54,7 +58,8 @@ JIMU_REQUEST_HEADERS = {
     "1",
     "Origin":
     "https://box.jimu.com",
-    "Cookie":'tr=102b2826-5546-4d77-a5f6-1bc4910cc0c7; tr=ce7798f2-6be6-40c9-8165-4601819f163c; gr_user_id=7bc5a3a0-4737-4e09-9447-f9d6eea8dd96; _qzja=1.1636350280.1501763703516.1501763703516.1501767982886.1501768000969.1501768122182.0.0.0.5.2; __utma=237340443.178906233.1497061582.1501767983.1501856196.7; _jzqa=1.3851647976868439600.1501763703.1501767983.1501856196.3; ag_fid=ejFkst1Z4xaLMP1F; __ag_cm_=1; Hm_lvt_1dc096a18210fb74c17c2feb1eb75e9c=1522847413,1522891871; Hm_lvt_b52e68eb56d57aeecdafc769040770d4=1522847413,1522891871; gr_session_id_82dbda8cf8253e8f=5c387eb2-5923-442a-a535-ed373ee341dd; ps=64ceaa25-253d-494d-a141-ab50d76eaa1b-p; bs=9e22b4b8-f69c-4094-9c65-5d866e96d7e0-w; .TLFT=JqYGsollrxAkGC0E06w4qA%3D%3D%3APdYGxR2bfxDi7rIgDIj0%2Fhpu9OYoJ%2BXEn0F7muPL5kU%3D%3A4%2FB%2FSl3OGsNIecDQZInkkBhN%2FH638qY5Y%2FT9qjRZwieEE%2Fr8oxtboPOywK%2BJ3vt1; Hm_lpvt_1dc096a18210fb74c17c2feb1eb75e9c=1522892881; Hm_lpvt_b52e68eb56d57aeecdafc769040770d4=1522892881',
+    "Cookie":
+    '',
     "User-Agent":
     "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36",
     "Referer":
@@ -69,12 +74,14 @@ def fetch_prj_list(session, url):
     """
 
     rsp = session.get(url)
+    if 'Forbidden' in rsp.text:
+        print("Forbiddened!")
     return rsp.text
 
 
 def parse_prj_list(html):
     """
-        返回项目列表和下一页路径
+        返回项目列表和下一页URL
     """
     root = pq(fromstring(html))
     ls_prj = []
@@ -145,6 +152,8 @@ def get_credit_prj_list():
             credit_url = url_template.format(page)
             rsp = session.get(credit_url, verify=False)
             html = rsp.text
+            if 'Forbidden' in rsp.text:
+                print("Forbiddened!")
             ls_credits = parse_credit_assign(html)
             if len(ls_credits) == 0:
                 break
@@ -180,9 +189,8 @@ def login_jimu_browser(session):
 def login_jimu(session, user, psw):
     logger.info("logging jimu...")
     form = {
-        "site": "",
-        "username": user,
-        "password": str(psw),
+        "encodedUsername": user,
+        "encodedPassword": str(psw),
         "agreeContract": "on"
     }
 
@@ -196,7 +204,7 @@ def login_jimu(session, user, psw):
         raise Exception("Login Error")
     import re
     m = re.findall('ticket = "(\S+)"', rsp.text)
-    if not u'上次登录' in rsp.text:
+    if not u'退出' in rsp.text:
         raise Exception("Login Error")
     # if not m:
     #    raise Exception("Login Error")
@@ -211,13 +219,12 @@ def check_balance(session):
     """
         返回帐户余额
     """
-    session.headers = {
-        "Accept": "application/json, text/javascript, */*; q=0.01"
-    }
-    rsp = session.get(JIMU_CHECK_BAL_URL)
-    jsret = json.loads(rsp.text)
-    session.headers = {}
-    return jsret["p2pUserInfo"]["totalP2pBalance"]
+    
+    rsp = session.get(JIMU_ASSET_OVERVIEW_URL)
+    root = lxml.html.fromstring(rsp.text)
+    amt = root.xpath(r'//div[@class="balance-amount"]')[0].text
+    amt = float(amt.replace(",",''))
+    return amt
 
 
 def get_credit_assigns(session):
@@ -226,17 +233,15 @@ def get_credit_assigns(session):
     """
     logger.debug("query credit assigns...")
     
-    url_ls = [JIMU_LIST_CREDIT_ASSIGN.format(days) for days in [11, 12, 13]]
-    if datetime.datetime.now().hour in [11, 16, 22, 23]:
-        url_ls = ['https://box.jimu.com/CreditAssign/List?rate=9&amount=3&days=13&orderIndex=1',
-            'https://box.jimu.com/CreditAssign/List?days=14&amount=3&rate=10&orderIndex=1',
-            'https://box.jimu.com/CreditAssign/List?days=15&amount=3&rate=10&orderIndex=1',
-            'https://box.jimu.com/CreditAssign/List?rate=10&amount=3&days=14&orderIndex=1',
-            'https://box.jimu.com/CreditAssign/List?days=12&amount=3&rate=9&orderIndex=1']
+    url_ls = [JIMU_LIST_CREDIT_ASSIGN.format(days) for days in [12,13]]
+    if random.random()>0.3:
+        url_ls = ['https://box.jimu.com/CreditAssign/List?days=14&orderIndex=1']
 
     credit_url = random.choice(url_ls)
     rsp = session.get(credit_url, verify=False)
     stret = rsp.text
+    if 'Forbidden' in rsp.text:
+        print("Forbiddened!")
     ls_credits = parse_credit_assign(stret)
     
     return ls_credits
@@ -245,7 +250,7 @@ def parse_credit_assign(html):
     q = pq(fromstring(html))
     ttl_amt = 0
     ls_credits = []
-    for each in q("div.container.credit-assign-list a[@href*='/CreditAssign/Index']"):
+    for each in q("div.invest-item"):
         each = pq(each)
         amt0 = float(each("p.project-info span.decimal")[0].text.replace(',', ''))
         amt1 = float(each("p.project-info span.decimal")[1].text.replace(',', ''))
@@ -254,7 +259,7 @@ def parse_credit_assign(html):
         logger.debug("credit: %.2f,%.2f" % (amt0, amt1))
         ls_credits.append({
             "url":
-            urlparse.urljoin(JIMU_BASE_URL, each.attr.href),
+            urlparse.urljoin(JIMU_BASE_URL, each.parent().attr.href),
             "amount":
             amt1,
             "bal":
@@ -280,7 +285,7 @@ def bid_credit_post(session, credit, bal):
     if bal < amt:
         amt = bal
     # 单个项目最高不超过3000
-    amt = '%.2f' % min(amt, 3000)
+    amt = '%.2f' % min(amt, 1000)
     # confim
     #session.headers= JIMU_REQUEST_HEADERS
     session.headers['DNT'] = '1'
@@ -310,7 +315,10 @@ def get_origion_prj_id(session, url):
     rsp = session.get(url)
     root = pq(fromstring(rsp.text))
     prj_href = root('#creditAssignData > div.row-fluid.credit-assign-content > div.span8 > div.credit-assign-title > h5 > a').attr.href
-    return prj_href.split("/")[-1]
+    if prj_href:
+        return prj_href.split("/")[-1]
+    else:
+        return None
 
 
 visited_prj = dict()
@@ -326,22 +334,24 @@ def bid_credit_assign():
         while True:
             acct_bal = check_balance(session)
             logger.debug('bal:%f' % acct_bal)
-            if acct_bal < 500:
+            if acct_bal < 50:
                 time.sleep(15 * 60)
                 continue
             credits = get_credit_assigns(session)
 
             for each in credits:
-                if acct_bal > 500 and each['bal'] > 500 \
-                        and each['remain_days'] > 30 and each['remain_days'] < 400 and each['interest_rate'] >= 9.5:
+                if acct_bal > 100 and each['bal'] > 50 \
+                        and each['remain_days'] > 30 and each['remain_days'] < 350 and each['interest_rate'] >= 10.5:
                     # 检查是否有逾期
                     try:
                         if visited_prj.has_key(each['url']):
                             prj_id, should_bid = visited_prj[each['url']]
                         else:
                             prj_id = get_origion_prj_id(session, each['url'])
+                            if not prj_id:
+                                continue
                             prj = fetch_prject_details(session, prj_id)
-                            should_bid = prj and prj['overdueCount'] <= 2 # and prj['cardNum'] 
+                            should_bid = prj and prj['overdueCount'] <= 2 and prj['overdueDays']<=2
                             visited_prj[each['url']] = (prj_id, should_bid)
 
                         if should_bid:
@@ -416,7 +426,6 @@ def collect_default_records():
         lsdr = fetch_default_records(session, dtext)
     del_default_record(dtext)
     # 删除重复项目
-    import pandas as pd
     df_dr = pd.DataFrame(lsdr)
     df_dr = df_dr.drop_duplicates(df_dr.columns[1:])
     lsdr = df_dr.to_dict(orient='records')
@@ -471,11 +480,6 @@ def parse_amt(amtstr):
     else:
         return amt
 
-def parse_dt(dtstr):
-    if len(dtstr)==10:
-        return datetime.datetime.strptime(dtstr, "%Y-%m-%d")
-    else:
-        return datetime.datetime.strptime(dtstr, "%Y-%m-%d %H:%M:%S")
 
 def fetch_prject_details(session, prjId):
     logger.info("fetch project detail: %s" % prjId)
@@ -483,7 +487,7 @@ def fetch_prject_details(session, prjId):
     url = JIMU_PRJ_DETAILS.format(prjId)
     rsp = session.get(url)
     prj = {}
-
+    
     if rsp.status_code == 200:
         # parse html
         html = rsp.text
@@ -491,7 +495,7 @@ def fetch_prject_details(session, prjId):
         
         prj['projectID'] = prjId
         prj['projectName'] = root.cssselect("#ProjectBasicInfo > div:nth-child(3) > dl > dd")[0].text
-        prj['userName'] = root.cssselect("#ProjectBasicInfo > div:nth-child(5) > dl > dd:nth-child(2)")[0].text
+        prj['userName'] = root.cssselect("#ProjectBasicInfo > div:nth-child(6) > dl > dd:nth-child(2)")[0].text
         # not get companyInfo/ ProjectInfo
         if not root.xpath("//*[@id='PersonalInfo']"):
             return
@@ -503,8 +507,11 @@ def fetch_prject_details(session, prjId):
         prj['borrowerGender'] = borrowerGender_elements[0].getnext().text.strip() if borrowerGender_elements else ""
 
         prj['borrowerAge'] = int(root.xpath(u"//*[@id='PersonalInfo']/div/div/dl/dt[text()='年龄']")[0].getnext().text[:-2])
-        prj['workCity'] = root.cssselect("#ProjectBasicInfo > div:nth-child(6) > dl > dd:nth-child(2)")[0].text
-        prj['repaymentMethod'] = root.cssselect("body > div.project-detail > div > div.row-fluid > article > div.project-basic-info > h5")[0].text
+        city_elements = root.xpath(u"//*[@id='ProjectBasicInfo']/div/dl/dt[text()='所在地']")
+        if city_elements:
+            prj['workCity'] = city_elements[0].getnext().text
+        
+        prj['repaymentMethod'] = ""
         cardNo_elements = root.xpath(u"//*[@id='PersonalInfo']/div/div/dl/dt[text()='证件号码']")
         if cardNo_elements:
             prj['cardNum'] = cardNo_elements[0].getnext().text
@@ -524,15 +531,22 @@ def fetch_prject_details(session, prjId):
         employerType_elements = root.xpath(u"//*[@id='PersonalInfo']/div/div/dl/dt[text()='工作单位性质']")
         prj['employerType'] = employerType_elements[0].getnext().text if employerType_elements else ""
 
-        prj['loanAmount'] = parse_amt(root.xpath(u"//*[@id='ProjectBasicInfo']/div/dl/dt[text()='本期融资金额']")[0].getnext().text)
+        prj['loanAmount'] = parse_amt(root.xpath(u"//*[@id='ProjectBasicInfo']/div/dl/dt[text()='本期借款金额']")[0].getnext().text)
 
-        prj['loanMonth'] = int(root.xpath(u"//*[@id='ProjectBasicInfo']/div/dl/dt[text()='借款期限']")[0].getnext().text.strip(u"个月"))
+        prj['loanMonth'] = int(root.xpath(u"//*[@id='ProjectBasicInfo']/div/dl/dt[text()='借款期限']")[0].getnext().text)
         prj['overdueCount'] = int(root.xpath(u"//*[@id='PersonalInfo']/div/div/dl/dt[text()='平台历史逾期次数']")[0].getnext().text[:-2])
 
         prj['historyOverdueAmount'] = parse_amt(root.xpath(u"//*[@id='PersonalInfo']/div/div/dl/dt[text()='平台历史逾期金额']")[0].getnext().text)
         prj['currentOverdueAmount'] = parse_amt(root.xpath(u"//*[@id='PersonalInfo']/div/div/dl/dt[text()='平台当前逾期金额']")[0].getnext().text)
-        loanStDt = root.xpath(u"//*[@id='ProjectBasicInfo']/div/dl/dt[text()='计划还款日期']")[0].getnext().text
-        prj['loanStDt'] = parse_dt(loanStDt)
+        loanStDt = root.xpath(u"//*[@id='ProjectBasicInfo']/div/dl/dt[text()='投标截止时间']")[0].getnext().text
+        prj['loanStDt'] = datetime.datetime.strptime(loanStDt, "%Y-%m-%d %H:%M:%S")
+        
+        df= pd.read_html(rsp.text)[0]
+        df.columns = '期次	收款日	应收本金(元)	应收回报(元)'.split()
+        df['daydiff'] = df['收款日'].astype('datetime64')
+        df['overdueDays'] = (df['daydiff'] - df['daydiff'].shift(1)).dt.days
+        prj['overdueDays'] = df[df['overdueDays']<26].overdueDays.sum()
+
     return prj
 
 
@@ -575,7 +589,7 @@ def main():
         
         with requests.Session() as session:
             login_jimu(session, user, psw)
-            ls_prj = get_project_details(session, ['4139010'])
+            ls_prj = get_project_details(session, ['16867006'])
         save_project_details(ls_prj)
         print(ls_prj)
 
